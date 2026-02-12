@@ -5,10 +5,11 @@
 
 #define BUFFER_SIZE 128
 
+// Entry do kernel em 32-bit
 void kernel_main() {
     clear_screen();
     draw_logo();
-    print("Welcome to anderOS!\nType 'help' for commands.\n> ", 0x0F);
+    print("Welcome to anderOS Protected Mode!\nType 'help' for commands.\n> ", 0x0F);
 
     char buffer[BUFFER_SIZE];
     int index = 0;
@@ -40,7 +41,6 @@ void kernel_main() {
             }
         }
 
-        // Scroll automático se ultrapassar a largura
         if (index >= MAX_COLS) {
             scroll();
             index = 0;
