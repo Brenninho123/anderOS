@@ -1,49 +1,87 @@
 #include "utils.h"
 #include "keyboard.h"
-#include "logo.h"
 #include "terminal.h"
+#include "logo.h"
 
-#define BUFFER_SIZE 128
+#include "os/system.h"
+#include "os/memory.h"
+#include "os/io.h"
 
-// Entry do kernel em 32-bit
-void kernel_main() {
+#define KERNEL_COLOR 0x0F
+
+// Buffer de entrada do terminal
+static char input_buffer[256];
+static int input_pos = 0;
+
+/* ===============================
+   Inicialização básica do kernel
+================================*/
+void kernel_init() {
     clear_screen();
-    draw_logo();
-    print("Welcome to anderOS Protected Mode!\nType 'help' for commands.\n> ", 0x0F);
 
-    char buffer[BUFFER_SIZE];
-    int index = 0;
+    print_color("Booting anderOS 32-bit...\n", KERNEL_COLOR);
+    os_delay(50);
+
+    show_logo();
+    print("\n", KERNEL_COLOR);
+
+    os_print_info();
+    print("\nType 'help' to see commands.\n\n", KERNEL_COLOR);
+
+    print("> ", KERNEL_COLOR);
+}
+
+/* ===============================
+   Processamento de teclado
+================================*/
+void handle_keyboard() {
+    char c = keyboard_getchar();
+
+    if (!c)
+        return;
+
+    // Enter
+    if (c == '\n') {
+        print("\n", KERNEL_COLOR);
+
+        input_buffer[input_pos] = '\0';
+        execute_command(input_buffer);
+
+        // Reset buffer
+        input_pos = 0;
+        memset(input_buffer, 0, sizeof(input_buffer));
+
+        print("> ", KERNEL_COLOR);
+        return;
+    }
+
+    // Backspace
+    if (c == '\b') {
+        if (input_pos > 0) {
+            input_pos--;
+            print("\b \b", KERNEL_COLOR);
+        }
+        return;
+    }
+
+    // Caracter normal
+    if (input_pos < sizeof(input_buffer) - 1) {
+        input_buffer[input_pos++] = c;
+        char s[2] = {c, 0};
+        print(s, KERNEL_COLOR);
+    }
+}
+
+/* ===============================
+   Loop principal do kernel
+================================*/
+void kernel_main() {
+    kernel_init();
 
     while (1) {
-        char c = get_key();
+        handle_keyboard();
 
-        if (c == 0x1C) { // Enter
-            buffer[index] = '\0';
-            print("\n", 0x0F);
-            execute_command(buffer);
-            print("> ", 0x0F);
-            index = 0;
-        } 
-        else if (c == 0x0E) { // Backspace
-            if (index > 0) {
-                index--;
-                int row = MAX_ROWS-1;
-                int col = index;
-                print_char(' ', 0x0F, row, col);
-            }
-        } 
-        else if (c >= 32 && c <= 126) { // ASCII imprimível
-            if (index < BUFFER_SIZE-1) {
-                buffer[index++] = c;
-                int row = MAX_ROWS-1;
-                int col = index-1;
-                print_char(c, 0x0F, row, col);
-            }
-        }
-
-        if (index >= MAX_COLS) {
-            scroll();
-            index = 0;
-        }
+        // Pequeno delay para evitar uso 100% da CPU
+        os_delay(1);
     }
 }
