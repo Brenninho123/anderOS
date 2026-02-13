@@ -1,87 +1,103 @@
 #include "utils.h"
-#include "keyboard.h"
-#include "terminal.h"
 #include "logo.h"
+#include "terminal.h"
 
 #include "os/system.h"
 #include "os/memory.h"
 #include "os/io.h"
+#include "os/interrupts/idt.h"
 
 #define KERNEL_COLOR 0x0F
 
-// Buffer de entrada do terminal
-static char input_buffer[256];
-static int input_pos = 0;
+/* =====================================
+   Estado global do kernel
+===================================== */
 
-/* ===============================
-   Inicialização básica do kernel
-================================*/
-void kernel_init() {
+static int kernel_running = 1;
+static unsigned long uptime_ticks = 0;
+
+/* =====================================
+   Hooks chamados pelas IRQs
+===================================== */
+
+// Chamado pelo timer (IRQ0)
+void kernel_timer_tick() {
+    uptime_ticks++;
+}
+
+// Futuro: scheduler vai rodar aqui
+void kernel_scheduler() {
+    // reservado para multitarefa futura
+}
+
+/* =====================================
+   Inicialização de subsistemas
+===================================== */
+
+static void kernel_boot_banner() {
     clear_screen();
 
-    print_color("Booting anderOS 32-bit...\n", KERNEL_COLOR);
+    print_color("Booting anderOS 32-bit kernel...\n", KERNEL_COLOR);
     os_delay(50);
 
     show_logo();
     print("\n", KERNEL_COLOR);
 
     os_print_info();
-    print("\nType 'help' to see commands.\n\n", KERNEL_COLOR);
+    print("\n", KERNEL_COLOR);
+}
 
+static void kernel_init_interrupts() {
+    print_color("Initializing IDT and IRQs...\n", KERNEL_COLOR);
+    idt_init();
+    print_color("Interrupt system online.\n\n", KERNEL_COLOR);
+}
+
+static void kernel_init_terminal() {
+    print_color("Starting terminal subsystem...\n", KERNEL_COLOR);
+    terminal_init();
+    print_color("Terminal ready.\n\n", KERNEL_COLOR);
+}
+
+static void kernel_show_prompt() {
     print("> ", KERNEL_COLOR);
 }
 
-/* ===============================
-   Processamento de teclado
-================================*/
-void handle_keyboard() {
-    char c = keyboard_getchar();
+/* =====================================
+   Loop principal do kernel
+===================================== */
 
-    if (!c)
-        return;
-
-    // Enter
-    if (c == '\n') {
-        print("\n", KERNEL_COLOR);
-
-        input_buffer[input_pos] = '\0';
-        execute_command(input_buffer);
-
-        // Reset buffer
-        input_pos = 0;
-        memset(input_buffer, 0, sizeof(input_buffer));
-
-        print("> ", KERNEL_COLOR);
-        return;
-    }
-
-    // Backspace
-    if (c == '\b') {
-        if (input_pos > 0) {
-            input_pos--;
-            print("\b \b", KERNEL_COLOR);
-        }
-        return;
-    }
-
-    // Caracter normal
-    if (input_pos < sizeof(input_buffer) - 1) {
-        input_buffer[input_pos++] = c;
-        char s[2] = {c, 0};
-        print(s, KERNEL_COLOR);
-    }
+static void kernel_idle() {
+    // instrução HLT reduz uso de CPU até próxima interrupção
+    __asm__ volatile("hlt");
 }
 
-/* ===============================
-   Loop principal do kernel
-================================*/
 void kernel_main() {
-    kernel_init();
+    /* --- Fase de boot --- */
+    kernel_boot_banner();
 
+    /* --- Inicializações críticas --- */
+    kernel_init_interrupts();
+    kernel_init_terminal();
+
+    print_color("System initialized successfully.\n", KERNEL_COLOR);
+    print_color("Type 'help' to list commands.\n\n", KERNEL_COLOR);
+
+    kernel_show_prompt();
+
+    /* --- Loop principal --- */
+    while (kernel_running) {
+
+        // executa tarefas de baixo nível
+        kernel_scheduler();
+
+        // entra em modo idle até próxima IRQ
+        kernel_idle();
+    }
+
+    /* Nunca deveria chegar aqui */
+    print_color("\nKernel halted.", KERNEL_COLOR);
     while (1) {
-        handle_keyboard();
-
-        // Pequeno delay para evitar uso 100% da CPU
-        os_delay(1);
+        __asm__ volatile("hlt");
     }
 }
